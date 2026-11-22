@@ -1,0 +1,67 @@
+{
+  "name": "Apple Shortcuts",
+  "type": "OS",
+  "path": "System",
+  "version": "1.0.0",
+  "description": "Trigger macOS Apple Shortcuts via /usr/bin/shortcuts and receive JSON results over WebSocket",
+  "url": "https://github.com/UUoocl/Shortcuts-Chataigne-Module",
+  "hasInput": true,
+  "hasOutput": true,
+  "hideDefaultCommands": true,
+  "hideDefaultParameters": [
+    "osInfo",
+    "networkInfo",
+    "appControl",
+    "appControlStatus",
+    "pingIPs",
+    "pingStatus",
+    "listIPs",
+    "pingInterval",
+    "pingTimeout",
+    "terminate",
+    "crashed"
+  ],
+  "parameters": {
+    "WebSocket URL": {
+      "type": "String",
+      "default": "ws://127.0.0.1:8080",
+      "description": "Chataigne WebSocket Server URL to receive JSON results"
+    },
+    "Default Shortcut": {
+      "type": "String",
+      "default": "",
+      "description": "Default shortcut name or identifier for Run Default"
+    },
+    "Run Default": {
+      "type": "Trigger",
+      "description": "Run the Default Shortcut immediately"
+    },
+    "List Shortcuts": {
+      "type": "Trigger",
+      "description": "List available shortcuts and send JSON over WebSocket"
+    }
+  },
+  "scripts": [
+    "shortcuts.js"
+  ],
+  "commands": {
+    "Run Shortcut": {
+      "menu": "",
+      "callback": "runShortcut",
+      "parameters": {
+        "Shortcut Name": {
+          "type": "String",
+          "default": ""
+        },
+        "Input Text": {
+          "type": "String",
+          "default": ""
+        }
+      }
+    },
+    "List Shortcuts": {
+      "menu": "",
+      "callback": "listShortcuts"
+    }
+  }
+}
