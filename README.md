@@ -1,6 +1,6 @@
 # Apple Shortcuts Custom Module (OS + WebSocket Return)
 
-A Chataigne custom module based on the `OS` module that triggers macOS Apple Shortcuts (`/usr/bin/shortcuts`) non-blocking and returns results as a JSON payload over WebSocket.
+A Chataigne custom module based on the `OS` module that triggers macOS Apple Shortcuts (`/usr/bin/shortcuts`) non-blocking and returns results as a JSON payload over WebSocket to the companion [Shortcuts-Response-Chataigne-Module](https://github.com/UUoocl/Shortcuts-Response-Chataigne-Module).
 
 ## Architecture
 
@@ -9,13 +9,13 @@ Chataigne (Apple Shortcuts / OS Module)
   │  local.launchProcess(fullCmd, 0)  [non-blocking background thread]
   ▼
 /usr/bin/python3  (hex-encoded bootstrap & packed args)
-  ├──▶ /usr/bin/shortcuts run  
+  ├──▶ /usr/bin/shortcuts run / list
   │         └── captures stdout & parses JSON if valid
   └──▶ WebSocket client (stdlib socket)
             └── sends JSON text frame + Close frame
                   ▼
-Chataigne (WebSocket Server, Protocol: JSON)
-  └── parses JSON into live Chataigne Values
+Chataigne (Apple Shortcuts Response / WebSocket Server, Protocol: JSON)
+  └── parses JSON into pre-declared & dynamic Chataigne Values + Triggers
 ```
 
 1. **Non-blocking execution**: `shortcuts.js` calls `local.launchProcess(..., 0)` so `OSModule` runs shortcuts on its background thread without pausing Chataigne's UI.
@@ -59,9 +59,8 @@ ln -sfn "$(pwd)/custom modules/Apple Shortcuts" ~/Documents/Chataigne/modules/"A
 
 ## Setup in Chataigne
 
-1. Add **Protocol → WebSocket Server**:
-   - Set **Local Port** (e.g. `8080`).
-   - Set **Protocol** to `JSON`.
+1. Add **System → Apple Shortcuts Response** (companion module: [Shortcuts-Response-Chataigne-Module](https://github.com/UUoocl/Shortcuts-Response-Chataigne-Module)) — or **Protocol → WebSocket Server** with **Protocol** set to `JSON`:
+   - Default **Local Port** is `8080`.
 2. Add **System → Apple Shortcuts**:
    - Set **WebSocket URL** to `ws://127.0.0.1:8080` (matching the WebSocket Server port).
 
