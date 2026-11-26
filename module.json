@@ -3,7 +3,7 @@
   "type": "OS",
   "path": "System",
   "version": "1.0.0",
-  "description": "Trigger macOS Apple Shortcuts via /usr/bin/shortcuts and receive JSON results over WebSocket",
+  "description": "Trigger macOS Apple Shortcuts via Shortcuts Events (osascript JXA) and receive JSON results over WebSocket",
   "url": "https://github.com/UUoocl/Shortcuts-Chataigne-Module",
   "downloadURL": "https://github.com/UUoocl/Shortcuts-Chataigne-Module/archive/main.zip",
   "hasInput": true,

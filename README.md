@@ -1,6 +1,6 @@
-# Apple Shortcuts Custom Module (OS + WebSocket Return)
+# Apple Shortcuts Custom Module (OS + JXA + WebSocket Return)
 
-A Chataigne custom module based on the `OS` module that triggers macOS Apple Shortcuts (`/usr/bin/shortcuts`) non-blocking and returns results as a JSON payload over WebSocket to the companion [Shortcuts-Response-Chataigne-Module](https://github.com/UUoocl/Shortcuts-Response-Chataigne-Module).
+A Chataigne custom module based on the `OS` module that triggers macOS Apple Shortcuts (`Shortcuts Events` via `osascript -l JavaScript`) non-blocking and returns results as a JSON payload over WebSocket to the companion [Shortcuts-Response-Chataigne-Module](https://github.com/UUoocl/Shortcuts-Response-Chataigne-Module).
 
 ## Architecture
 
@@ -9,8 +9,8 @@ Chataigne (Apple Shortcuts / OS Module)
   │  local.launchProcess(fullCmd, 0)  [non-blocking background thread]
   ▼
 /usr/bin/python3  (hex-encoded bootstrap & packed args)
-  ├──▶ /usr/bin/shortcuts run / list
-  │         └── captures stdout & parses JSON if valid
+  ├──▶ /usr/bin/osascript -l JavaScript  (Shortcuts Events)
+  │         └── passes input as parsed JSON object or text; returns result in memory
   └──▶ WebSocket client (stdlib socket)
             └── sends JSON text frame + Close frame
                   ▼

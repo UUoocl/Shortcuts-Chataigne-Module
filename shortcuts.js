@@ -1,6 +1,6 @@
 /*
-  Apple Shortcuts Custom Module (OS + WebSocket Return)
-  Executes /usr/bin/shortcuts non-blocking via Python and sends
+  Apple Shortcuts Custom Module (OS + JXA + WebSocket Return)
+  Executes Apple Shortcuts Events non-blocking via osascript (JXA) and sends
   a JSON payload of results to a Chataigne WebSocket Server.
 */
 
@@ -43,7 +43,7 @@ function runShortcut(shortcutName, inputText)
 		script.logWarning("Shortcut Name is empty");
 		return;
 	}
-	var inStr = inputText ? ("" + inputText) : "";
+	var inStr = (inputText !== undefined && inputText !== null) ? ("" + inputText) : "";
 	executeShortcutsAction("run", "" + shortcutName, inStr);
 }
 
@@ -59,7 +59,44 @@ function toHex(str)
 	for (var i = 0; i < str.length; i++)
 	{
 		var code = str.charCodeAt(i);
-		hex += digits.charAt((code >> 4) & 0x0f) + digits.charAt(code & 0x0f);
+		if (code < 0x80)
+		{
+			hex += digits.charAt((code >> 4) & 0x0f) + digits.charAt(code & 0x0f);
+		}
+		else if (code < 0x800)
+		{
+			var b1 = 0xc0 | (code >> 6);
+			var b2 = 0x80 | (code & 0x3f);
+			hex += digits.charAt((b1 >> 4) & 0x0f) + digits.charAt(b1 & 0x0f);
+			hex += digits.charAt((b2 >> 4) & 0x0f) + digits.charAt(b2 & 0x0f);
+		}
+		else if (code >= 0xd800 && code <= 0xdbff && i + 1 < str.length)
+		{
+			var next = str.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff)
+			{
+				var cp = 0x10000 + (((code - 0xd800) << 10) | (next - 0xdc00));
+				var u1 = 0xf0 | (cp >> 18);
+				var u2 = 0x80 | ((cp >> 12) & 0x3f);
+				var u3 = 0x80 | ((cp >> 6) & 0x3f);
+				var u4 = 0x80 | (cp & 0x3f);
+				hex += digits.charAt((u1 >> 4) & 0x0f) + digits.charAt(u1 & 0x0f);
+				hex += digits.charAt((u2 >> 4) & 0x0f) + digits.charAt(u2 & 0x0f);
+				hex += digits.charAt((u3 >> 4) & 0x0f) + digits.charAt(u3 & 0x0f);
+				hex += digits.charAt((u4 >> 4) & 0x0f) + digits.charAt(u4 & 0x0f);
+				i++;
+				continue;
+			}
+		}
+		else
+		{
+			var c1 = 0xe0 | (code >> 12);
+			var c2 = 0x80 | ((code >> 6) & 0x3f);
+			var c3 = 0x80 | (code & 0x3f);
+			hex += digits.charAt((c1 >> 4) & 0x0f) + digits.charAt(c1 & 0x0f);
+			hex += digits.charAt((c2 >> 4) & 0x0f) + digits.charAt(c2 & 0x0f);
+			hex += digits.charAt((c3 >> 4) & 0x0f) + digits.charAt(c3 & 0x0f);
+		}
 	}
 	return hex;
 }
@@ -72,60 +109,77 @@ function executeShortcutsAction(action, shortcutName, inputText)
 	script.log("Apple Shortcuts -> " + action + (shortcutName !== "" ? " (" + shortcutName + ")" : ""));
 
 	var pyLines = [
-		"import sys, subprocess, socket, os, base64, json, tempfile, urllib.parse as u",
+		"import sys, subprocess, socket, os, base64, json, urllib.parse as u",
 		"parts = [bytes.fromhex(x).decode('utf-8') for x in sys.argv[2].split('|')]",
 		"action, name, ws, inp = parts[0], parts[1], parts[2], parts[3]",
 		"res = {'ok': True, 'action': action, 'shortcut': name, 'error': ''}",
-		"in_path = None",
-		"out_path = None",
+		"jxa = '\\n'.join([",
+		"    'var action = ' + json.dumps(action) + ';',",
+		"    'var name = ' + json.dumps(name) + ';',",
+		"    'var inp = ' + json.dumps(inp) + ';',",
+		"    'var se = Application(\"Shortcuts Events\");',",
+		"    'if (action === \"list\") {',",
+		"    '    var names = se.shortcuts.name();',",
+		"    '    JSON.stringify({ ok: true, shortcuts: names });',",
+		"    '} else if (action === \"run\") {',",
+		"    '    var sc = se.shortcuts.byName(name);',",
+		"    '    if (!sc.exists()) sc = se.shortcuts.byId(name);',",
+		"    '    if (!sc.exists()) throw new Error(\"Shortcut not found: \" + name);',",
+		"    '    var outVal;',",
+		"    '    if (inp !== \"\") {',",
+		"    '        var inputArg = inp;',",
+		"    '        var trimmed = inp.trim();',",
+		"    '        if ((trimmed.charAt(0) === \"{\" && trimmed.charAt(trimmed.length - 1) === \"}\") || (trimmed.charAt(0) === \"[\" && trimmed.charAt(trimmed.length - 1) === \"]\")) {',",
+		"    '            try { inputArg = JSON.parse(trimmed); } catch (e) { inputArg = inp; }',",
+		"    '        }',",
+		"    '        outVal = se.run(sc, { withInput: inputArg });',",
+		"    '    } else {',",
+		"    '        outVal = se.run(sc);',",
+		"    '    }',",
+		"    '    var hasOut = (outVal !== undefined && outVal !== null);',",
+		"    '    JSON.stringify({ ok: true, hasOutput: hasOut, rawOutput: hasOut ? outVal : null });',",
+		"    '}'",
+		"])",
 		"try:",
-		"    if action == 'list':",
-		"        proc = subprocess.run(['/usr/bin/shortcuts', 'list'], capture_output=True, text=True)",
-		"        if proc.returncode != 0:",
-		"            res['ok'] = False",
-		"            res['error'] = proc.stderr.strip() or 'shortcuts list failed'",
+		"    proc = subprocess.run(['/usr/bin/osascript', '-l', 'JavaScript', '-'], input=jxa, capture_output=True, text=True)",
+		"    if proc.returncode != 0:",
+		"        res['ok'] = False",
+		"        res['error'] = proc.stderr.strip() or ('Exit code ' + str(proc.returncode))",
+		"        if action == 'list':",
 		"            res['shortcuts'] = []",
 		"            res['count'] = 0",
-		"        else:",
-		"            items = [line.strip() for line in proc.stdout.splitlines() if line.strip()]",
+		"        elif action == 'run':",
+		"            res['output'] = ''",
+		"            res['outputJson'] = None",
+		"        print('SHORTCUTS_ERR: ' + res['error'], flush=True)",
+		"    else:",
+		"        data = json.loads(proc.stdout.strip() or '{}')",
+		"        if action == 'list':",
+		"            items = [str(x).strip() for x in data.get('shortcuts', []) if str(x).strip()]",
 		"            res['shortcuts'] = items",
 		"            res['count'] = len(items)",
-		"    elif action == 'run':",
-		"        fd_out, out_path = tempfile.mkstemp(prefix='chataigne_sc_out_')",
-		"        os.close(fd_out)",
-		"        cmd = ['/usr/bin/shortcuts', 'run', name, '--output-path', out_path, '--output-type', 'public.plain-text']",
-		"        if inp:",
-		"            fd_in, in_path = tempfile.mkstemp(prefix='chataigne_sc_in_')",
-		"            with os.fdopen(fd_in, 'w', encoding='utf-8') as f:",
-		"                f.write(inp)",
-		"            cmd.extend(['--input-path', in_path])",
-		"        proc = subprocess.run(cmd, capture_output=True, text=True)",
-		"        out_text = ''",
-		"        if os.path.exists(out_path):",
-		"            with open(out_path, 'r', encoding='utf-8', errors='replace') as f:",
-		"                out_text = f.read().strip()",
-		"        if not out_text and proc.stdout:",
-		"            out_text = proc.stdout.strip()",
-		"        res['output'] = out_text",
-		"        res['outputJson'] = None",
-		"        if out_text:",
-		"            try:",
-		"                res['outputJson'] = json.loads(out_text)",
-		"            except Exception:",
-		"                pass",
-		"        if proc.returncode != 0:",
-		"            res['ok'] = False",
-		"            res['error'] = proc.stderr.strip() or ('Exit code ' + str(proc.returncode))",
-		"            print('SHORTCUTS_ERR: ' + res['error'], flush=True)",
+		"        elif action == 'run':",
+		"            res['output'] = ''",
+		"            res['outputJson'] = None",
+		"            if data.get('hasOutput'):",
+		"                raw = data.get('rawOutput')",
+		"                if isinstance(raw, str):",
+		"                    res['output'] = raw.strip()",
+		"                    if res['output']:",
+		"                        try:",
+		"                            res['outputJson'] = json.loads(res['output'])",
+		"                        except Exception:",
+		"                            pass",
+		"                elif isinstance(raw, (dict, list)):",
+		"                    res['output'] = json.dumps(raw)",
+		"                    res['outputJson'] = raw",
+		"                else:",
+		"                    res['output'] = str(raw)",
+		"                    res['outputJson'] = raw",
 		"except Exception as ex:",
 		"    res['ok'] = False",
 		"    res['error'] = str(ex)",
 		"    print('SHORTCUTS_ERR: ' + str(ex), flush=True)",
-		"finally:",
-		"    for pth in (in_path, out_path):",
-		"        if pth and os.path.exists(pth):",
-		"            try: os.remove(pth)",
-		"            except Exception: pass",
 		"p = json.dumps(res).encode('utf-8')",
 		"try:",
 		"    r = u.urlparse(ws)",
